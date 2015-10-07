@@ -2,6 +2,9 @@
 
 define('LINE_ENDING', "\r\n");
 define('PROGID', '-//Niko//DHBW iCal Fixing Proxy//DE');
+//define('CONTENT_TYPE', 'text/plain');
+define('CONTENT_TYPE', 'text/Calendar');
+define('CHARSET', 'UTF-8');
 
 class VCal {
     public $container;
@@ -242,7 +245,7 @@ class CharStream {
     public function __construct($string)
     {
         $this->string = $string;
-        $this->length = mb_strlen($string);
+        $this->length = strlen($string);
     }
 
     public function seek($n = 1) {
@@ -258,19 +261,36 @@ class CharStream {
     }
 
     public function peek() {
+        //echo "_" . str_replace(array("\n"), array('\n'), $this->string[$this->offset]) . "_" . $this->offset . "/" . ($this->length - 1) . "\n";
         return $this->string[$this->offset];
     }
 
     public function has($n = 1) {
         return ($this->offset + $n) < $this->length;
     }
+
+    public function rest() {
+        if ($this->has()) {
+            return mb_substr($this->string, $this->offset);
+        }
+        return '';
+    }
+
+    public function offset() {
+        return $this->offset;
+    }
+
+    public function length() {
+        return $this->length;
+    }
 }
 
 class FixupListener extends Listener {
     public function beginVCal($original)
     {
-        return trim(str_replace(array("\r\n", "\r"), "\n", $original));
+        return trim(str_replace(array("\r\n", "\r"), "\n", utf8_decode($original)));
     }
+
     public function endContainer(Container $container)
     {
         if ($container->is('VCALENDAR')) {
@@ -299,58 +319,12 @@ if (isset($_REQUEST['course']) && trim($_REQUEST['course'])) {
     $course = trim($_REQUEST['course']);
 }
 $original = file_get_contents('http://vorlesungsplan.dhbw-mannheim.de/ical.php?uid=' . $course);
+header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
+header("Pragma: no-cache");
+header('Content-Type: ' . CONTENT_TYPE . ', charset=' . CHARSET);
 $vcal = VCal::parse($original, new FixupListener());
 
 
-header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
-header("Content-Type: text/plain");
 
 echo $vcal->compile();
 //print_r($vcal);
-die();
-//header("Content-Type: text/Calendar");
-header("Pragma: no-cache");
-$result = array();
-
-$uids = array();
-
-foreach ($lines as $raw) {
-    $line = $raw;
-
-    //strip trailing carriage return, will be reappended later
-    if (substr($raw, -1) == "\r") {
-        $line = substr($line, 0, strlen($line)-1);
-    }
-
-    //key value splitting
-    $pair = explode(":", $line, 2);
-    if (count($pair) == 2) {
-        //found a valid, non-empty line for processing
-        list($key, $value) = $pair;
-
-        //Add application name before METHOD field
-        if ($key == "METHOD") {
-            $result[] =  "PRODID:-//Niko//DHBW iCal Fixing Proxy//DE";
-        }
-
-        //Fix unescaped characters in text fields
-        if ($key == "SUMMARY") {
-            $value = preg_replace("/[,;]/", "\\$0", $value);
-        }
-
-        //Make UIDs actually unique
-        if ($key == "UID") {
-            //If necessary append "R" (for Recurrence) to UID until unique
-            while (in_array($value, $uids)) {
-                $value .= "R";
-            }
-            //Remember all used UIDs
-            $uids[] = $value;
-        }
-
-        $result[] = $key.":".$value;
-    }
-}
-
-$outfeed = implode("\r\n", $result);
-echo $outfeed;
