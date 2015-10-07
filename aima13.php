@@ -1,7 +1,7 @@
 <?php
 
 define('LINE_ENDING', "\r\n");
-define('PROGID', '-//Niko//DHBW iCal Fixing Proxy//DE');
+define('PRODID', '-//Niko//DHBW iCal Fixing Proxy//DE');
 //define('CONTENT_TYPE', 'text/plain');
 define('CONTENT_TYPE', 'text/Calendar');
 define('CHARSET', 'UTF-8');
@@ -47,21 +47,25 @@ class VCal {
 
     public static function parse($input, Listener $l) {
         $input = $l->beginVCal($input);
-        return $l->endVCal(new VCal(self::parseElement(new CharStream($input), $l)));
+        $element = self::parseElement(new CharStream($input), $l);
+        if ($element instanceof Container) {
+            return $l->endVCal(new VCal($element));
+        }
+        return null;
     }
 
     private static function parseElement(CharStream $s, Listener $l, $currentContainer = null) {
         $l->beginElement($currentContainer);
         $line = self::parseLine($s, $l);
         if (!$line) {
-            return false;
+            return null;
         }
         list($key, $value) = $line;
         $lowerKey = mb_strtolower($key);
         if ($lowerKey == 'begin') {
             return $l->endElement(self::parseContainer($s, $l, trim($value)));
         } else if ($lowerKey == 'end' && mb_strtolower(trim($value)) == mb_strtolower($currentContainer)) {
-            return false;
+            return null;
         } else {
             return $l->endElement(self::parseProperty($l, $key, $value));
         }
@@ -70,7 +74,7 @@ class VCal {
     private static function parseContainer(CharStream $s, Listener $l, $name) {
         $l->beginContainer($name);
         $out = array();
-        while ($element = self::parseElement($s, $l, $name)) {
+        while (($element = self::parseElement($s, $l, $name)) !== null) {
             $out[] = $element;
         }
 
@@ -132,6 +136,13 @@ class Element {
 }
 
 class Property extends Element {
+    const METHOD = 'METHOD';
+    const PRODID = 'PRODID';
+    const UID = 'UID';
+    const START = 'DTSTART';
+    const END = 'DTEND';
+    const SUMMARY = 'SUMMARY';
+
     public $value;
 
     public function __construct($name, $value)
@@ -147,6 +158,12 @@ class Property extends Element {
 }
 
 class Container extends Element {
+    const ROOT = 'VCALENDAR';
+    const EVENT = 'VEVENT';
+
+    /**
+     * @var Element[]
+     */
     public $elements;
 
     public function __construct($name, array $elements)
@@ -156,7 +173,8 @@ class Container extends Element {
     }
 
     /**
-     * @return Property|null
+     * @param name
+     * @return Property
      */
     public function getFirst($name) {
         foreach ($this->elements as $element) {
@@ -171,7 +189,7 @@ class Container extends Element {
         $out = array();
         $replaced = false;
         foreach ($this->elements as $element) {
-            if (!$replaced && $element->is($name)) {
+            if (!$replaced && $element instanceof Property && $element->is($name)) {
                 $out[] = new Property($name, $value);
                 $replaced = true;
             } else {
@@ -322,7 +340,7 @@ class FixupListener extends Listener {
         $out = array();
         foreach ($VCal->container->elements as $element) {
             $keep = true;
-            if ($element instanceof Container && $element->is('VEVENT')) {
+            if ($element instanceof Container && $element->is(Container::EVENT)) {
                 foreach ($this->filters as $name => $pattern) {
                     $prop = $element->getFirst($name);
                     if ($prop !== null && preg_match($pattern, $prop->value)) {
@@ -341,20 +359,20 @@ class FixupListener extends Listener {
 
     public function endContainer(Container $container)
     {
-        if ($container->is('VCALENDAR')) {
-            return $container->insertAfter('METHOD', new Property('PRODID', PROGID));
+        if ($container->is(Container::ROOT)) {
+            return $container->insertAfter(Property::METHOD, new Property(Property::PRODID, PRODID));
         }
-        if ($container->is('VEVENT')) {
-            $uid = $container->getFirst('UID')->value;
-            $dtend = $container->getFirst('DTEND')->value;
-            return $container->setFirst('UID', $uid . '_' . $dtend);
+        if ($container->is(Container::EVENT)) {
+            $uid = $container->getFirst(Property::UID)->value;
+            $dtend = $container->getFirst(Property::END)->value;
+            return $container->setFirst(Property::UID, $uid . '_' . $dtend);
         }
         return $container;
     }
 
     public function endProperty(Property $property)
     {
-        if ($property->is('SUMMARY')) {
+        if ($property->is(Property::SUMMARY)) {
             return new Property($property->name, preg_replace("/[,;]/", "\\$0", $property->value));
         }
         return $property;
