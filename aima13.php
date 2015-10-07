@@ -14,6 +14,10 @@ class VCal {
         $this->container = $container;
     }
 
+    public function withElements(array $elements) {
+        return new VCal($this->container->withElements($elements));
+    }
+
     public function compile() {
         return $this->compileContainer($this->container);
     }
@@ -135,6 +139,11 @@ class Property extends Element {
         parent::__construct($name);
         $this->value = $value;
     }
+
+    public function __toString()
+    {
+        return $this->name . ':' . $this->value;
+    }
 }
 
 class Container extends Element {
@@ -182,6 +191,11 @@ class Container extends Element {
             }
         }
         return new Container($this->name, $out);
+    }
+
+    public function withElements(array $elements)
+    {
+        return new Container($this->name, $elements);
     }
 }
 
@@ -286,9 +300,43 @@ class CharStream {
 }
 
 class FixupListener extends Listener {
+
+    private $filters;
+
+    public function __construct(array $filters)
+    {
+        $this->filters = $filters;
+    }
+
     public function beginVCal($original)
     {
         return trim(str_replace(array("\r\n", "\r"), "\n", utf8_decode($original)));
+    }
+
+    public function endVCal(VCal $VCal)
+    {
+        if (count($this->filters) === 0) {
+            return parent::endVCal($VCal);
+        }
+
+        $out = array();
+        foreach ($VCal->container->elements as $element) {
+            $keep = true;
+            if ($element instanceof Container && $element->is('VEVENT')) {
+                foreach ($this->filters as $name => $pattern) {
+                    $prop = $element->getFirst($name);
+                    if ($prop !== null && preg_match($pattern, $prop->value)) {
+                        $keep = false;
+                        break;
+                    }
+                }
+            }
+            if ($keep) {
+                $out[] = $element;
+            }
+        }
+
+        return $VCal->withElements($out);
     }
 
     public function endContainer(Container $container)
@@ -318,11 +366,16 @@ $course = '6188001';
 if (isset($_REQUEST['course']) && trim($_REQUEST['course'])) {
     $course = trim($_REQUEST['course']);
 }
+$filters = array();
+if (isset($_REQUEST['filter']) && is_array($_REQUEST['filter'])) {
+    $filters = $_REQUEST['filter'];
+}
+
 $original = file_get_contents('http://vorlesungsplan.dhbw-mannheim.de/ical.php?uid=' . $course);
 header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
 header("Pragma: no-cache");
 header('Content-Type: ' . CONTENT_TYPE . ', charset=' . CHARSET);
-$vcal = VCal::parse($original, new FixupListener());
+$vcal = VCal::parse($original, new FixupListener($filters));
 
 
 
