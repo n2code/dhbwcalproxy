@@ -6,6 +6,9 @@ define('PRODID', '-//Niko//DHBW iCal Fixing Proxy//DE');
 define('CONTENT_TYPE', 'text/Calendar');
 define('CHARSET', 'UTF-8');
 
+ini_set('default_charset', CHARSET);
+mb_internal_encoding(CHARSET);
+
 class VCal {
     public $container;
 
@@ -276,8 +279,13 @@ class CharStream {
 
     public function __construct($string)
     {
-        $this->string = $string;
-        $this->length = strlen($string);
+        if (mb_detect_encoding($string, array('UTF-8'), true) === 'UTF-8') {
+            $this->string = preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
+            $this->length = count($this->string);
+        } else {
+            $this->string = $string;
+            $this->length = strlen($this->string);
+        }
     }
 
     public function seek($n = 1) {
@@ -328,7 +336,7 @@ class FixupListener extends Listener {
 
     public function beginVCal($original)
     {
-        return trim(str_replace(array("\r\n", "\r"), "\n", utf8_decode($original)));
+        return trim(str_replace(array("\r\n", "\r"), "\n", $original));
     }
 
     public function endVCal(VCal $VCal)
@@ -380,6 +388,36 @@ class FixupListener extends Listener {
 
 }
 
+function loadOriginalICal($course)
+{
+    $context = stream_context_create(array('http' => array('header' => 'Accept-Charset: UTF-8, *;q=0')));
+    $original = file_get_contents('http://vorlesungsplan.dhbw-mannheim.de/ical.php?uid=' . $course, (defined('FILE_BINARY') ? FILE_BINARY : false), $context);
+
+    $headers = array();
+    if (isset($http_response_header))
+    {
+        foreach ($http_response_header as $header) {
+            $colonPos = mb_strpos($header, ':');
+            if ($colonPos !== false) {
+                $name = mb_strtolower(trim(mb_substr($header, 0, $colonPos)));
+                $value = trim(mb_substr($header, $colonPos + 1));
+                $headers[$name] = $value;
+            }
+        }
+    }
+
+    $fileName = "$course.ics";
+    $dispositionHeader = 'content-disposition';
+    if (isset($headers[$dispositionHeader])) {
+        $match = array();
+        if (preg_match('/filename=\"((?:\\"|[^"])+?)"/i', $headers[$dispositionHeader], $match)) {
+            $fileName = stripcslashes($match[1]);
+        }
+    }
+
+    return array($original, $fileName);
+}
+
 $course = '6188001';
 if (isset($_REQUEST['course']) && trim($_REQUEST['course'])) {
     $course = trim($_REQUEST['course']);
@@ -389,13 +427,13 @@ if (isset($_REQUEST['filter']) && is_array($_REQUEST['filter'])) {
     $filters = $_REQUEST['filter'];
 }
 
-$original = file_get_contents('http://vorlesungsplan.dhbw-mannheim.de/ical.php?uid=' . $course);
+list($original, $fileName) = loadOriginalICal($course);
+
 header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
 header("Pragma: no-cache");
-header('Content-Type: ' . CONTENT_TYPE . ', charset=' . CHARSET);
+header('Content-Type: ' . CONTENT_TYPE . '; charset=' . CHARSET);
+header('Content-Disposition: attachment; filename="' . addcslashes($fileName, '"') . '"');
+
 $vcal = VCal::parse($original, new FixupListener($filters));
-
-
-
 echo $vcal->compile();
 //print_r($vcal);
