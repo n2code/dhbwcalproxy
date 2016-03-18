@@ -380,10 +380,15 @@ class FixupListener extends Listener {
 
     public function endProperty(Property $property)
     {
-        if ($property->is(Property::SUMMARY)) {
-            return new Property($property->name, preg_replace("/[,;]/", "\\$0", $property->value));
+        $val = trim($property->value);
+        if ($val[0] == '"' && $val[0] == $val[count($val) - 1]) {
+            return $property;
         }
-        return $property;
+        $val = str_replace(array("\n", '\\'), array('\n', '\\\\'), $val);
+        if ($property->is(Property::SUMMARY) && preg_match('/[:;,]/', $val) !== false) {
+            $val = '"' . $val . '"';
+        }
+        return new Property($property->name, $val);
     }
 
 }
