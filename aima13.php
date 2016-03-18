@@ -381,7 +381,7 @@ class FixupListener extends Listener {
     public function endProperty(Property $property)
     {
         $val = trim($property->value);
-        if ($val[0] == '"' && $val[0] == $val[count($val) - 1]) {
+        if (empty($val) || ($val[0] == '"' && $val[0] == $val[count($val) - 1])) {
             return $property;
         }
         $val = str_replace(array("\n", '\\'), array('\n', '\\\\'), $val);
