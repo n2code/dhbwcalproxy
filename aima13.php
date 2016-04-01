@@ -2,8 +2,6 @@
 
 define('LINE_ENDING', "\r\n");
 define('PRODID', '-//Niko//DHBW iCal Fixing Proxy//DE');
-//define('CONTENT_TYPE', 'text/plain');
-define('CONTENT_TYPE', 'text/Calendar');
 define('CHARSET', 'UTF-8');
 
 ini_set('default_charset', CHARSET);
@@ -432,11 +430,14 @@ if (isset($_REQUEST['filter']) && is_array($_REQUEST['filter'])) {
 
 list($original, $fileName) = loadOriginalICal($course);
 
-header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
-header("Pragma: no-cache");
-header('Content-Type: ' . CONTENT_TYPE . '; charset=' . CHARSET);
-header('Content-Disposition: attachment; filename="' . addcslashes($fileName, '"') . '"');
+if (isset($_REQUEST['DEBUG'])) {
+    header('Content-Type: text/plain; charset=' . CHARSET);
+} else {
+    header('Content-Type: text/Calendar; charset=' . CHARSET);
+    header("Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0");
+    header("Pragma: no-cache");
+    header('Content-Disposition: attachment; filename="' . addcslashes($fileName, '"') . '"');
+}
 
 $vcal = VCal::parse($original, new FixupListener($filters));
 echo $vcal->compile();
-//print_r($vcal);
