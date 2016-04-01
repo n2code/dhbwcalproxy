@@ -383,9 +383,9 @@ class FixupListener extends Listener {
             return $property;
         }
         $name = strtoupper($property->name);
-        $quoteMePlease = array(Property::SUMMARY);
-        $from = array("\n", '\\',    ':',  ';',  ',');
-        $to   = array('\n', '\\\\', '\;', '\;', '\,');
+        $quoteMePlease = array(Property::SUMMARY, 'DESCRIPTION', 'LOCATION', 'COMMENT');
+        $from = array('\\',   "\n",  ';',  ',');
+        $to   = array('\\\\', '\n', '\;', '\,');
         if (in_array($name, $quoteMePlease)) {
             $val = str_replace($from, $to, $val);
         }
