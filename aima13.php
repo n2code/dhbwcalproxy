@@ -382,9 +382,14 @@ class FixupListener extends Listener {
         if (empty($val) || ($val[0] == '"' && $val[0] == $val[count($val) - 1])) {
             return $property;
         }
+        $name = strtoupper($property->name);
+        $quoteMePlease = array(Property::SUMMARY);
         $from = array("\n", '\\',    ':',  ';',  ',');
         $to   = array('\n', '\\\\', '\;', '\;', '\,');
-        return new Property($property->name, str_replace($from, $to, $val));
+        if (in_array($name, $quoteMePlease)) {
+            $val = str_replace($from, $to, $val);
+        }
+        return new Property($name, $val);
     }
 
 }
