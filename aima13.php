@@ -384,11 +384,9 @@ class FixupListener extends Listener {
         if (empty($val) || ($val[0] == '"' && $val[0] == $val[count($val) - 1])) {
             return $property;
         }
-        $val = str_replace(array("\n", '\\'), array('\n', '\\\\'), $val);
-        if ($property->is(Property::SUMMARY) && preg_match('/[:;,]/', $val) !== false) {
-            $val = '"' . $val . '"';
-        }
-        return new Property($property->name, $val);
+        $from = array("\n", '\\',    ':',  ';',  ',');
+        $to   = array('\n', '\\\\', '\;', '\;', '\,');
+        return new Property($property->name, str_replace($from, $to, $val));
     }
 
 }
